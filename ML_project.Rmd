@@ -1,0 +1,131 @@
+---
+title: "ML_project"
+author: "Ciprian C CHIRILA"
+date: "August 26, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUCTION (from the project assignement)
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+# PREPARE the R environment and load the libraries needed
+
+```{r}
+rm(list = ls()) # clean workspace
+library(caret)
+```
+
+# LOAD the datasets
+
+```{r}
+ptrain <- read.csv("pml-training.csv")
+ptest  <- read.csv("pml-testing.csv")
+```
+
+
+# SPLIT the training data in two smaller chunks
+
+We choose to work with a smaller chunk of data to test our approach (this is faster). So, we separate the orginal train set into a train and testing 
+sets.
+
+```{r}
+set.seed(132)
+inTrain <- createDataPartition(y=ptrain$classe, p=0.7, list=F)
+ptrain1 <- ptrain[ inTrain, ]
+ptrain2 <- ptrain[-inTrain, ]
+```
+
+# CLEAN the data: remove almost linearly-dependent data, those that are not defined, and the variables that can't be used to predict
+
+We identify the almost linear-dependent variables, the ones that are not defined, and the ones that can not be used for prediction (like for example,
+the data and time of the measurements).
+
+```{r}
+
+# which of the variables have almost zero variance
+
+nz <- nearZeroVar(ptrain1)
+ptrain1 <- ptrain1[, -nz]
+ptrain2 <- ptrain2[, -nz]
+
+# variables mostly NAs
+
+mostNA <- sapply(ptrain1, function(x) mean(is.na(x))) > 0.95
+ptrain1 <- ptrain1[, mostNA==F]
+ptrain2 <- ptrain2[, mostNA==F]
+
+# remove variables that can't ne used to predict (the first 5)
+
+ptrain1 <- ptrain1[, -(1:5)]
+ptrain2 <- ptrain2[, -(1:5)]
+
+```
+
+## Modelling
+
+Here, we employ the Random Forests (very good for nonlinear data). We use 3-fold cross-validation. As we will see, already this model is able to achieve
+very high prediction accuracy, soe we won't have to use any other machine learning models.
+
+```{r}
+
+# use 3-fold CV to select best tuning parameters
+fitCtrl <- trainControl(method="cv", number=3, verboseIter=F)
+
+# fit model on ptrain1
+fit <- train(classe ~ ., data=ptrain1, method="rf", trControl=fitCtrl)
+
+# display the final model' details
+fit$finalModel
+```
+
+```{r}
+# use model to predict classe in validation set (ptrain2)
+preds <- predict(fit, newdata=ptrain2)
+
+# show confusion matrix to get estimate of out-of-sample error
+confusionMatrix(ptrain2$classe, preds)
+```
+
+## Re-train the model using the original (full) sets of data
+
+Since we saw that Random Forrest is a successfull choice, we do the same as above on the full sets provided (slower!).
+
+```{r}
+
+# take care of the variables with close to zero variance
+nz <- nearZeroVar(ptrain)
+ptrain <- ptrain[, -nz]
+ptest <- ptest[, -nz]
+
+# remove NAs
+mostNA <- sapply(ptrain, function(x) mean(is.na(x))) > 0.95
+ptrain <- ptrain[, mostNA==F]
+ptest <- ptest[, mostNA==F]
+
+# remove variables that can't be used to predict (first 5 vars, for example the time and date of measurement)
+ptrain <- ptrain[, -(1:5)]
+ptest <- ptest[, -(1:5)]
+
+# refit model on the full training set (ptrain)
+fitCtrl <- trainControl(method="cv", number=3, verboseIter=F)
+fit <- train(classe ~ ., data=ptrain, method="rf", trControl=fitCtrl)
+
+```
+
+## Predict
+
+```{r}
+
+# predict on test set
+predictions <- predict(fit, newdata=ptest)
+
+# see the final predictions on the provided test set of 20 cases
+results <- data.frame(problem_id=ptest$problem_id,predicted=predictions)
+print(results)
+
+```
